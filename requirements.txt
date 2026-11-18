@@ -1,0 +1,18 @@
+# SmartDoc - Python dependencies
+# Install with: pip install -r requirements.txt
+
+# Image processing (OpenCV + NumPy)
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Graph plotting for histogram analysis
+matplotlib>=3.7.0
+
+# Tesseract OCR wrapper (Tesseract binary must be installed on the system)
+pytesseract>=0.3.10
+
+# Image handling for GUI display
+Pillow>=10.0.0
+
+# Note: Tkinter is part of standard Python on Windows.
+# Note: Tesseract OCR engine (UB Mannheim build) is used for text extraction.

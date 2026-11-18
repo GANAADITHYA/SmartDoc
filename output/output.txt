@@ -1,0 +1,5 @@
+SmartDoc DIP Test Cocument
+Traditional Image Processing Only
+Optical Character Recognition
+
+|
