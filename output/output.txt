@@ -1,5 +1,47 @@
-SmartDoc DIP Test Cocument
-Traditional Image Processing Only
-Optical Character Recognition
-
-|
+USN]. WT Tod u7 “2408551”
+ad Lae 5 a) JSS MAHAVIDYAPEETHA
+, - JSS SCIENCE AND TECHNOLOGY UNIVERSITY, MYSURU
+‘ toe i . Computer Science and Engineering (Computer Engineering)
+. ae V Semester BE ALL Sections © +. oo
+a ; T : . ssi ter Vision ~ : .
+- Duration:1.15 Hy est 1: Image Processing and Compu Max. Marks:30
+: NOTE: Q ti Stan Date:29.10.2026 t . .
+-luestion No.1 is C i No.2 or 3.
+: [ano] co | co | : ompulsory. Answer Either Q.No. ; ARES ;
+yee + QUESTION
+‘
+dioatate the fundamental steps in digital image processing wilh Lo!
+. ram es _.- . va a :
+wl; wy Define the digital image. Also list the differences between the following . |
+1) lap fot fia |W exampless 0s
+eee eee J >|, i) * Spatial and intensity resolution . en :
+' : ' ii) Sampling and quantization ~ Lot . ; .
+oo co. Define the term adjacency. Also, consider an image segment shown in - |,
+mo .- the following table. Compute length of the shbrtest-4, shortest-8 &| 05 ° |
+‘ ae Shortest-m paths between pixels p & q where, v={0,1,2} 1: . |
+ae Explain in brief the following Basic Gray Level Transformations with SoA
+Loe _ || 2 relevantgrapns. = ge ye tad .
+- ; : ij. Linear Functions:  . oo ane a Jty rs
+. een en a. Identity Transformation. ~~ 7-6 .g™ 44S P oC] .
+4 : ‘ " b. Negative Transformation - +). - eo Ay ae i oo
+7. 2b. (CO2 | U1 ii, Logarithmic Functions: . A fon veer wo? 10,
+Ms . Lo. a. Log Transformation . ‘ : fey wa : My
+en ’ * y b. Inverse-log Transformation © ee ky Pe .
+so - 1 iii, | Power-Law Functions: . . . ar es i
+' Ni : a. n™ power transformation : - no . . :
+; *__b._n™ root transformation ‘- . .
+“3a bor rk What is image interpolation? Explain any two image interpolation fos | a |
+- . techniques. Dot : ere ee oe
+02 | L3 Given values of histogram A and B, modify histogram of A as given by { . 10
+3b histogram B using histogram equalization and specification. + .
+. . Table 4:HistogramA , Table 2:HistogramB : . : %
+, [ intensity(A) | #pixels_| ~ Intensity(B) | #pixels ; : . .
+: : conn wee we mba Re ete RP a if. on
+\. eee TE site. 2° ah wee Beene
+. ts will have the ability to . wr)
+a Identify the principal areas In wich digital Image Processing can be applied and understand the ;
+“LMS { digital image processing. . . |
+a Go2 3a the appropriate operations for imagé enhancement in spatial domain based on the oo
+4 hh, application. : J .
+Bes iG ~~ Cognitive Domains: L1 - Remembering. 2 ~ Understanding &L3 — Applying an : :
+ee Serer . « nend~ + 2” ot eS

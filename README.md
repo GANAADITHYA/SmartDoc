@@ -38,8 +38,15 @@ The entire application is streamlined around **ONLY FOUR CORE FEATURES**:
 
 ### Feature 1: Document Border Detection
 - **Objective**: Identify the 4 document corners against the surrounding background.
-- **Pipeline**: Grayscale conversion → 5×5 Gaussian blur → Canny edge detection ($G = \sqrt{G_x^2 + G_y^2}$) → Contour detection (`cv2.findContours`) → Polygon simplification (`cv2.approxPolyDP` with Ramer-Douglas-Peucker) → 4-corner quad extraction.
-- **Interactive Corner Refinement**: If automatic detection fails, user can toggle "Manual Corners" and click the 4 corners directly on the left image (Top-Left, Top-Right, Bottom-Right, Bottom-Left).
+- **Robust Multi-Strategy Pipeline**:
+  1. *Normalized Downscaling*: Analyzes at 800px height to eliminate high-frequency internal text clutter.
+  2. *Multi-Candidate Detection*: Generates 4 edge/binary maps (Adaptive Canny with median thresholds, Morphological Gradients, Otsu Page Masking, and Dilation Linking).
+  3. *Convex Hull & RDP Simplification*: Bridges small tears or ragged edges and evaluates polygon simplification ($45^\circ \le \text{angle} \le 135^\circ$).
+  4. *Fallbacks*: Minimum-area rectangle and safe boundary inset if edges are faint.
+- **Interactive 4-Corner Editor**: Clicking **"Adjust / Manual Corners"** opens an interactive dialog where you can:
+  - Drag any of the 4 colored corner handles (1:TL Yellow, 2:TR Cyan, 3:BR Magenta, 4:BL Lime) with the mouse for pixel-perfect alignment.
+  - Or click "Click 4 Points Fresh" to place corners sequentially.
+  - Quick clicking directly on the main window's Left panel also works with exact coordinate translation.
 
 ### Feature 2: Perspective Transformation
 - **Objective**: Rectify off-axis camera angles and tilt into a flat, top-down rectangular scan.
@@ -56,16 +63,16 @@ The entire application is streamlined around **ONLY FOUR CORE FEATURES**:
   3. *Background Normalization*: Intensity division $I_{\text{norm}}(x, y) = \left[ \frac{I(x, y)}{B(x, y) + 1} \right] \times 255$ cancels uneven lighting and yellow paper cast.
   4. *Noise Reduction*: Gentle 3×3 median filter suppresses salt-and-pepper grain without blurring thin ink strokes.
   5. *Contrast Enhancement*: CLAHE (clip limit 2.0, tile grid 8×8) amplifies faded ink contrast locally.
-  6. *Adaptive Thresholding*: Gaussian-weighted local thresholding ($T(x, y) = \text{LocalMean}(x, y) - 10$) binarizes the page into black ink on crisp white paper.
+  6. *Resolution-Adaptive Thresholding*: Gaussian-weighted local thresholding ($T(x, y) = \text{LocalMean}(x, y) - 8$) dynamically scaled to image dimensions to prevent hollowed-out letter strokes.
 - **Intermediate Stage Inspection**: Interactive dropdown allows viewing any individual intermediate DIP stage.
 
 ### Feature 4: Text Extraction (OCR)
 - **Objective**: Extract readable text and save it to `output/output.txt`.
-- **Engine**: Traditional offline Tesseract OCR via `pytesseract.image_to_string()`.
-- **Configuration**:
-  - `--oem 3`: Default OCR Engine Mode (built-in offline engine).
-  - `--psm 6`: Page Segmentation Mode 6 ("Assume a single uniform block of text").
-- **DIP Impact**: Preprocessing flattens baselines, removes stain artifacts, and provides clean character outlines for connected-component blob analysis.
+- **High-Accuracy Traditional OCR Pipeline**:
+  - *Resolution Normalization*: Bicubic upscaling ensures character x-height $\ge 30$ px (optimal 300 DPI for Tesseract).
+  - *DIP Preprocessing*: Illumination normalization + CLAHE + Otsu binarization produces solid, dark character strokes.
+  - *Despeckling*: Connected-component noise suppression eliminates isolated 1-2 px paper grain specks, preventing random punctuation hallucinations.
+  - *Page Segmentation Modes (PSM)*: Selectable layout modes (PSM 6 for Uniform Paragraphs, PSM 3 for Automatic Multi-column/Header Layout, PSM 4 for Single Column). Intelligent fallback ensures maximum character yield.
 
 ---
 

@@ -188,26 +188,32 @@ def apply_clahe(image, clip_limit=2.0, tile_grid_size=8):
     return clahe.apply(gray)
 
 
-def apply_adaptive_threshold(image, block_size=15, c_value=10):
+def apply_adaptive_threshold(image, block_size=None, c_value=8):
     """
     Binarize document image using adaptive Gaussian-weighted thresholding.
     Computes a localized threshold for every individual pixel based on its
     local neighborhood mean minus a fine-tuning constant C.
 
+    If block_size is None, it is dynamically computed based on image resolution
+    to prevent hollowing out thick strokes on high-resolution photographs.
+
     Formula:
       T(x, y) = LocalMean(x, y) - C
       I_bin(x, y) = 255 if I(x, y) > T(x, y) else 0
-
-    OpenCV:
-      cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                            cv2.THRESH_BINARY, block_size, c_value)
     """
     gray = to_grayscale(image)
+    if block_size is None or block_size <= 0:
+        max_dim = max(gray.shape[:2])
+        block_size = int(max_dim / 45)
+        if block_size % 2 == 0:
+            block_size += 1
+        block_size = max(15, min(block_size, 61))
+
     check_odd_kernel(block_size)
     if block_size < 3:
         raise ValueError("block_size must be an odd integer >= 3.")
 
-    return cv2.adaptiveThreshold(
+    thresh = cv2.adaptiveThreshold(
         gray,
         255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -215,6 +221,7 @@ def apply_adaptive_threshold(image, block_size=15, c_value=10):
         block_size,
         c_value,
     )
+    return thresh
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +230,7 @@ def apply_adaptive_threshold(image, block_size=15, c_value=10):
 
 def enhance_old_document(image, bg_blur_size=51, noise_kernel=3,
                          clip_limit=2.0, tile_grid=8,
-                         block_size=15, c_value=10):
+                         block_size=None, c_value=8):
     """
     Complete Old Document Enhancement Pipeline.
     Combines a principled sequence of 6 traditional DIP algorithms to address:
@@ -239,7 +246,7 @@ def enhance_old_document(image, bg_blur_size=51, noise_kernel=3,
       STEP 3: Background Normalization (cv2.divide / formula)
       STEP 4: Noise Reduction (gentle 3x3 median blur)
       STEP 5: Contrast Enhancement (CLAHE: clipLimit=2.0, tileGridSize=8x8)
-      STEP 6: Adaptive Thresholding (Gaussian C: block_size=15, C=10)
+      STEP 6: Adaptive Thresholding (Resolution-adaptive Gaussian binarization)
 
     Returns:
       (final_enhanced_image, intermediate_stages)
