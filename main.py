@@ -5,14 +5,23 @@ SmartDoc - Interactive Old Document Scanner and DIP Educational System.
 
 A clean, presentation-friendly Digital Image Processing desktop application
 organized around ONLY FOUR CORE FEATURES:
-  1. Document Border Detection (Robust multi-candidate auto-detection + Interactive 4-corner editor)
-  2. Perspective Transformation (Homography matrix H rectification)
-  3. Old Document Enhancement (6-stage restoration pipeline + stage viewer)
-  4. Text Extraction (OCR) (High-accuracy Tesseract OCR with adaptive DIP binarization & layout modes)
+  1. Document Border Detection
+  2. Perspective Transformation
+  3. Old Document Enhancement
+  4. Text Extraction (OCR)
 
 STRICTLY TRADITIONAL COMPUTER VISION & DIP:
   - OpenCV, NumPy, Tkinter, Pillow, Matplotlib, Pytesseract.
   - Zero machine learning, zero deep learning, zero cloud AI.
+
+Features:
+  - Automatic & manual 4-corner document boundary detection.
+  - Perspective rectification via 3x3 homography matrix warping.
+  - Principled 6-step old document restoration pipeline with stage inspection.
+  - Traditional Tesseract OCR (--oem 3 --psm 6) with auto-save to output/output.txt.
+  - Embedded side-by-side Matplotlib grayscale intensity histograms.
+  - In-depth Educational Explanation Panel with real measured pixel statistics,
+    mathematical formulas, and faculty presentation scripts.
 """
 
 import os
@@ -120,20 +129,20 @@ class SmartDocApp:
         self.root.configure(bg=COLOR_BG)
 
         # Image state
-        self.original_image = None
-        self.current_processed = None
-        self.processing_stack = []
-        self.history_records = []
+        self.original_image = None       # Never modified pristine upload
+        self.current_processed = None     # Current processed output
+        self.processing_stack = []        # For Undo: list of (processed_img, feature_name, measured_data)
+        self.history_records = []         # For History table: list of dicts
 
         # Feature 1 & 2 state
-        self.detected_corners = None
-        self.manual_points = []
+        self.detected_corners = None     # 4x2 float32 array
+        self.manual_points = []          # List of manually clicked points
         self.manual_selection_mode = False
         self.left_display_scale = 1.0
         self.homography_matrix = None
 
         # Feature 3 state
-        self.pipeline_stages = []
+        self.pipeline_stages = []        # List of (stage_name, stage_image)
 
         # Feature 4 state
         self.last_extracted_text = ""
@@ -156,6 +165,7 @@ class SmartDocApp:
     # -----------------------------------------------------------------------
 
     def _build_ui(self):
+        # Create a scrollable master frame
         self.canvas_scroll = tk.Canvas(self.root, bg=COLOR_BG, highlightthickness=0)
         self.scrollbar_v = ttk.Scrollbar(self.root, orient="vertical", command=self.canvas_scroll.yview)
         self.main_container = tk.Frame(self.canvas_scroll, bg=COLOR_BG)
@@ -170,9 +180,11 @@ class SmartDocApp:
         self.canvas_scroll.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar_v.pack(side=tk.RIGHT, fill=tk.Y)
 
+        # Enable mousewheel scrolling across entire application
         self.root.bind_all("<MouseWheel>", self._on_mousewheel)
         self.canvas_scroll.bind("<Configure>", self._on_canvas_configure)
 
+        # Build individual sections
         self._build_header_section()
         self._build_workflow_cards()
         self._build_image_comparison_section()
@@ -185,6 +197,7 @@ class SmartDocApp:
         self.canvas_scroll.itemconfig(self.canvas_window, width=event.width)
 
     def _on_mousewheel(self, event):
+        # Don't hijack mousewheel if focus is inside text widget
         focused = self.root.focus_get()
         if isinstance(focused, tk.Text):
             return
@@ -199,6 +212,7 @@ class SmartDocApp:
                           highlightbackground=COLOR_BORDER, highlightthickness=1)
         header.pack(fill=tk.X, padx=14, pady=(10, 6))
 
+        # Title & Subtitle
         left_box = tk.Frame(header, bg=COLOR_CARD)
         left_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
@@ -213,6 +227,7 @@ class SmartDocApp:
         sub_lbl = tk.Label(left_box, text=desc_text, font=FONT_SUBTITLE, fg=COLOR_MUTED, bg=COLOR_CARD)
         sub_lbl.pack(anchor="w", pady=(2, 0))
 
+        # Upload Button
         btn_upload = tk.Button(header, text="📁 Upload Document Photo", font=FONT_LABEL,
                                bg=COLOR_BLUE, fg="white", activebackground=COLOR_BLUE_HOVER,
                                activeforeground="white", relief=tk.FLAT, padx=16, pady=8,
@@ -235,7 +250,7 @@ class SmartDocApp:
                       highlightbackground=COLOR_BORDER, highlightthickness=1)
         c1.grid(row=0, column=0, sticky="nsew", padx=4)
         tk.Label(c1, text="1. BORDER DETECTION", font=FONT_CARD_TITLE, fg=COLOR_NAVY, bg=COLOR_CARD).pack(anchor="w")
-        tk.Label(c1, text="Find 4 document corners via multi-scale gradients & RDP",
+        tk.Label(c1, text="Find 4 document corners via Canny gradients & approxPolyDP",
                  font=FONT_SMALL, fg=COLOR_MUTED, bg=COLOR_CARD, wraplength=260, justify="left").pack(anchor="w", pady=(2, 8))
 
         btn_box1 = tk.Frame(c1, bg=COLOR_CARD)
@@ -244,8 +259,8 @@ class SmartDocApp:
                                     relief=tk.FLAT, padx=8, pady=4, cursor="hand2", command=self.feature1_detect_border)
         self.btn_detect.pack(side=tk.LEFT, padx=(0, 4))
 
-        self.btn_manual_corner = tk.Button(btn_box1, text="Adjust / Manual Corners", font=FONT_SMALL, bg="#e2e8f0", fg=COLOR_NAVY,
-                                           relief=tk.FLAT, padx=6, pady=4, cursor="hand2", command=self.open_corner_editor)
+        self.btn_manual_corner = tk.Button(btn_box1, text="Manual Corners", font=FONT_SMALL, bg="#e2e8f0", fg=COLOR_NAVY,
+                                           relief=tk.FLAT, padx=6, pady=4, cursor="hand2", command=self.toggle_manual_corners)
         self.btn_manual_corner.pack(side=tk.LEFT)
 
         # Card 2: Perspective Correction
@@ -274,6 +289,7 @@ class SmartDocApp:
                                      relief=tk.FLAT, padx=8, pady=4, cursor="hand2", command=self.feature3_enhance_document)
         self.btn_enhance.pack(side=tk.LEFT, padx=(0, 4))
 
+        # Intermediate stage combobox
         self.stage_var = tk.StringVar(value="View Stage...")
         self.stage_box = ttk.Combobox(c3, textvariable=self.stage_var, state="readonly",
                                       values=["Run Enhance first"], width=24, font=FONT_SMALL)
@@ -285,7 +301,7 @@ class SmartDocApp:
                       highlightbackground=COLOR_BORDER, highlightthickness=1)
         c4.grid(row=0, column=3, sticky="nsew", padx=4)
         tk.Label(c4, text="4. EXTRACT TEXT (OCR)", font=FONT_CARD_TITLE, fg=COLOR_NAVY, bg=COLOR_CARD).pack(anchor="w")
-        tk.Label(c4, text="Traditional Tesseract OCR with adaptive DIP binarization",
+        tk.Label(c4, text="Traditional Tesseract OCR (--oem 3 --psm 6) to text file",
                  font=FONT_SMALL, fg=COLOR_MUTED, bg=COLOR_CARD, wraplength=260, justify="left").pack(anchor="w", pady=(2, 8))
 
         btn_box4 = tk.Frame(c4, bg=COLOR_CARD)
@@ -297,17 +313,6 @@ class SmartDocApp:
         self.btn_view_text = tk.Button(btn_box4, text="View Text", font=FONT_SMALL, bg="#e2e8f0", fg=COLOR_NAVY,
                                        relief=tk.FLAT, padx=6, pady=4, cursor="hand2", command=self.open_text_dialog)
         self.btn_view_text.pack(side=tk.LEFT)
-
-        # Layout Mode Selector for OCR
-        self.ocr_psm_var = tk.StringVar(value="PSM 6: Uniform Paragraphs")
-        psm_box = ttk.Combobox(c4, textvariable=self.ocr_psm_var, state="readonly",
-                               values=[
-                                   "PSM 6: Uniform Paragraphs (Default)",
-                                   "PSM 3: Automatic Layout (Multi-column)",
-                                   "PSM 4: Single Column (Narrow)",
-                                   "PSM 11: Sparse Scattered Text"
-                               ], width=26, font=FONT_SMALL)
-        psm_box.pack(anchor="w", pady=(6, 0))
 
     # -----------------------------------------------------------------------
     # Image Comparison Section: Left (Original) vs Right (Processed)
@@ -366,6 +371,7 @@ class SmartDocApp:
         tk.Label(title_box, text="X-axis: Intensity (0 = Black, 255 = White) | Y-axis: Pixel Frequency",
                  font=FONT_SMALL, fg=COLOR_MUTED, bg=COLOR_CARD).pack(side=tk.RIGHT)
 
+        # Embedded Matplotlib Figure
         self.fig = Figure(figsize=(10.5, 2.5), dpi=100, facecolor="#ffffff")
         self.ax_orig = self.fig.add_subplot(121)
         self.ax_proc = self.fig.add_subplot(122)
@@ -378,6 +384,7 @@ class SmartDocApp:
         self.hist_canvas.get_tk_widget().pack(fill=tk.X, expand=True, pady=(4, 2))
         self.hist_canvas.draw()
 
+        # Brief educational note beneath graphs
         note_text = (
             "Observation Guide: Aged/yellowed paper concentrates pixels in middle greys (values 70-160). "
             "After enhancement and adaptive thresholding, the histogram becomes sharply bimodal with peaks at 0 (ink) and 255 (paper)."
@@ -394,6 +401,7 @@ class SmartDocApp:
         ax.set_facecolor("#fafafa")
 
     def update_histograms(self, original_img, processed_img=None):
+        """Redraw both original and processed histograms."""
         self.ax_orig.clear()
         self.ax_proc.clear()
 
@@ -452,13 +460,12 @@ class SmartDocApp:
             "  SMARTDOC: DIGITAL IMAGE PROCESSING & TRADITIONAL OCR ARCHITECTURE\n"
             "=" * 78 + "\n\n"
             "This application demonstrates the complete classical pipeline for restoring old documents:\n\n"
-            "  1. BORDER DETECTION       : Locate document page corners using multi-scale Canny gradients,\n"
-            "                              morphological closing, and RDP contour polygon approximation.\n"
+            "  1. BORDER DETECTION       : Locate document page corners using Canny edge gradients\n"
+            "                              and Ramer-Douglas-Peucker contour polygon approximation.\n"
             "  2. PERSPECTIVE WARP       : Rectify perspective distortion using a 3x3 homography matrix H.\n"
             "  3. OLD DOCUMENT ENHANCE   : 6-stage DIP pipeline (Grayscale -> Background Normalization ->\n"
             "                              Median Noise Reduction -> CLAHE -> Adaptive Thresholding).\n"
-            "  4. TEXT EXTRACTION (OCR)  : High-accuracy Tesseract OCR with resolution normalization,\n"
-            "                              adaptive binarization, morphological despeckling, and PSM modes.\n\n"
+            "  4. TEXT EXTRACTION (OCR)  : Traditional offline Tesseract OCR (--oem 3 --psm 6).\n\n"
             "Click 'Upload Document Photo' to load an image. When you execute any of the four features,\n"
             "this panel will automatically display its complete mathematical formulas, OpenCV parameters,\n"
             "actual measured image statistics, and a faculty presentation explanation."
@@ -480,6 +487,7 @@ class SmartDocApp:
                               highlightbackground=COLOR_BORDER, highlightthickness=1)
         bottom_bar.pack(fill=tk.X, padx=14, pady=(6, 4))
 
+        # Left controls: History, Undo, Reset
         btn_hist = tk.Button(bottom_bar, text="📜 Processing History", font=FONT_BODY, bg="#e2e8f0", fg=COLOR_NAVY,
                              relief=tk.FLAT, padx=10, pady=5, cursor="hand2", command=self.open_history_dialog)
         btn_hist.pack(side=tk.LEFT, padx=(0, 6))
@@ -492,6 +500,7 @@ class SmartDocApp:
                               relief=tk.FLAT, padx=10, pady=5, cursor="hand2", command=self.reset_all)
         btn_reset.pack(side=tk.LEFT, padx=6)
 
+        # Right controls: Save Processed Image, Save Extracted Text
         btn_save_img = tk.Button(bottom_bar, text="💾 Save Processed Image", font=FONT_BODY, bg=COLOR_BLUE, fg="white",
                                  relief=tk.FLAT, padx=12, pady=5, cursor="hand2", command=self.save_processed_image)
         btn_save_img.pack(side=tk.RIGHT, padx=6)
@@ -587,7 +596,7 @@ class SmartDocApp:
                 before_img=self.original_image,
                 after_img=self.original_image,
                 corners=corners,
-                status_note="Four corners detected automatically via multi-scale Canny gradients & RDP"
+                status_note="Four corners detected automatically via Canny edge detection & approxPolyDP"
             )
 
             exp_text = ae.format_full_explanation(ae.FEATURE_BORDER, measured_data)
@@ -602,303 +611,53 @@ class SmartDocApp:
                 "notes": "4 corners identified automatically"
             })
 
-            self.set_status("Border detected! Review corners on Left image. Click 'Adjust / Manual Corners' if fine-tuning is needed.")
+            self.set_status("Border detected successfully! Review corners on Left image. Proceed with Step 2: Correct Perspective.")
         else:
             messagebox.showwarning(
-                "Notice",
-                "Opening the Interactive 4-Corner Editor so you can position the corners precisely."
+                "Automatic Detection Inconclusive",
+                "Automatic boundary detection could not find a clear four-corner quadrilateral.\n\n"
+                "Switching to MANUAL CORNER SELECTION:\n"
+                "Please click the 4 corners directly on the LEFT image in order:\n"
+                "1. Top-Left  2. Top-Right  3. Bottom-Right  4. Bottom-Left"
             )
-            self.open_corner_editor()
+            self.toggle_manual_corners(force_enable=True)
 
-    # -----------------------------------------------------------------------
-    # Interactive 4-Corner Editor Dialog (Precision Drag & Click)
-    # -----------------------------------------------------------------------
-
-    def open_corner_editor(self):
-        """
-        Interactive 4-Corner Selection and Adjustment Window:
-        Allows users to drag corners, click 4 points, or auto-detect with real-time feedback.
-        """
+    def toggle_manual_corners(self, force_enable=None):
         if self.original_image is None:
-            messagebox.showinfo("No Image", "Please upload a document image first.")
+            messagebox.showinfo("No Image", "Please upload an image first.")
             return
 
-        h_orig, w_orig = self.original_image.shape[:2]
-
-        # Initial corners: detected, or previous, or safe 5% inset
-        if self.detected_corners is not None:
-            active_corners = self.detected_corners.copy()
+        if force_enable is not None:
+            self.manual_selection_mode = force_enable
         else:
-            auto_c = ds.find_document_corners(self.original_image)
-            active_corners = auto_c if auto_c is not None else np.array([
-                [w_orig * 0.05, h_orig * 0.05],
-                [w_orig * 0.95, h_orig * 0.05],
-                [w_orig * 0.95, h_orig * 0.95],
-                [w_orig * 0.05, h_orig * 0.95]
-            ], dtype="float32")
+            self.manual_selection_mode = not self.manual_selection_mode
 
-        editor = tk.Toplevel(self.root)
-        editor.title("Interactive 4-Corner Editor — Precision Boundary Tuning")
-        editor.geometry("1020x760")
-        editor.configure(bg=COLOR_BG)
-        editor.transient(self.root)
-        editor.grab_set()
-
-        # Instruction header
-        top_bar = tk.Frame(editor, bg=COLOR_CARD, padx=14, pady=10,
-                           highlightbackground=COLOR_BORDER, highlightthickness=1)
-        top_bar.pack(fill=tk.X, padx=10, pady=8)
-
-        tk.Label(top_bar, text="DRAG CORNER HANDLES OR CLICK TO POSITION",
-                 font=FONT_LABEL, fg=COLOR_NAVY, bg=COLOR_CARD).pack(anchor="w")
-        instruct_text = (
-            "• Drag any of the 4 colored corner handles (1:TL, 2:TR, 3:BR, 4:BL) with the mouse to fit the page edges.\n"
-            "• Or click 'Click 4 Points Fresh' to click the 4 corners sequentially."
-        )
-        tk.Label(top_bar, text=instruct_text, font=FONT_SMALL, fg=COLOR_MUTED, bg=COLOR_CARD, justify="left").pack(anchor="w", pady=(2, 0))
-
-        # Canvas for interactive editing
-        canvas_frame = tk.Frame(editor, bg=COLOR_CARD, highlightbackground=COLOR_BORDER, highlightthickness=1)
-        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 8))
-
-        canvas_w = 980
-        canvas_h = 580
-        canvas = tk.Canvas(canvas_frame, bg="#1e293b", width=canvas_w, height=canvas_h, highlightthickness=0)
-        canvas.pack(fill=tk.BOTH, expand=True)
-
-        # Scale image to canvas
-        scale = min((canvas_w - 40) / w_orig, (canvas_h - 40) / h_orig)
-        disp_w = int(w_orig * scale)
-        disp_h = int(h_orig * scale)
-        offset_x = (canvas_w - disp_w) // 2
-        offset_y = (canvas_h - disp_h) // 2
-
-        # Convert image for canvas
-        if len(self.original_image.shape) == 2:
-            rgb_orig = cv2.cvtColor(self.original_image, cv2.COLOR_GRAY2RGB)
+        self.manual_points = []
+        if self.manual_selection_mode:
+            self.btn_manual_corner.config(bg="#f59e0b", fg="white", text="Selecting Corners...")
+            self._show_original(self.original_image)
+            self.set_status("MANUAL MODE: Click the 4 corners on the LEFT picture (Top-Left -> Top-Right -> Bottom-Right -> Bottom-Left).")
         else:
-            rgb_orig = cv2.cvtColor(self.original_image, cv2.COLOR_BGR2RGB)
-        disp_img = cv2.resize(rgb_orig, (disp_w, disp_h), interpolation=cv2.INTER_AREA)
-        photo_editor = ImageTk.PhotoImage(Image.fromarray(disp_img))
-
-        # Background image on canvas
-        canvas.create_image(offset_x, offset_y, anchor="nw", image=photo_editor, tags="bg_image")
-
-        # State for dragging
-        drag_state = {
-            "corners": active_corners.copy(),
-            "selected_handle": None,
-            "click_mode": False,
-            "click_step": 0
-        }
-
-        corner_colors = ["#facc15", "#06b6d4", "#ec4899", "#22c55e"] # Yellow, Cyan, Magenta, Lime
-        corner_labels = ["1: TL", "2: TR", "3: BR", "4: BL"]
-
-        def img_to_canvas(pt):
-            return int(pt[0] * scale + offset_x), int(pt[1] * scale + offset_y)
-
-        def canvas_to_img(cx, cy):
-            ix = (cx - offset_x) / scale
-            iy = (cy - offset_y) / scale
-            return min(max(0, ix), w_orig - 1), min(max(0, iy), h_orig - 1)
-
-        def redraw_overlay():
-            canvas.delete("overlay")
-            pts_canvas = [img_to_canvas(pt) for pt in drag_state["corners"]]
-
-            # Draw polygon perimeter
-            flat_pts = []
-            for px, py in pts_canvas:
-                flat_pts.extend([px, py])
-            canvas.create_polygon(flat_pts, outline="#00e600", fill="#00e600", stipple="gray25",
-                                  width=3, tags="overlay")
-
-            # Draw corner handles
-            radius = 11
-            for idx, (px, py) in enumerate(pts_canvas):
-                # Outer black ring
-                canvas.create_oval(px - radius, py - radius, px + radius, py + radius,
-                                   fill="#ffffff", outline="#000000", width=2, tags="overlay")
-                # Colored dot
-                canvas.create_oval(px - radius + 3, py - radius + 3, px + radius - 3, py + radius - 3,
-                                   fill=corner_colors[idx], outline="", tags="overlay")
-                # Label box
-                lx, ly = px + 14, py - 10
-                canvas.create_rectangle(lx - 2, ly - 9, lx + 36, ly + 9, fill="#0f172a", outline="", tags="overlay")
-                canvas.create_text(lx + 17, ly, text=corner_labels[idx], fill="#ffffff",
-                                   font=("Segoe UI", 8, "bold"), tags="overlay")
-
-        redraw_overlay()
-
-        # Mouse Event Handlers
-        def on_press(event):
-            if drag_state["click_mode"]:
-                ix, iy = canvas_to_img(event.x, event.y)
-                step = drag_state["click_step"]
-                drag_state["corners"][step] = [ix, iy]
-                drag_state["click_step"] += 1
-                if drag_state["click_step"] >= 4:
-                    drag_state["click_mode"] = False
-                    drag_state["click_step"] = 0
-                    btn_click_mode.config(bg="#e2e8f0", fg=COLOR_NAVY, text="Click 4 Points Fresh")
-                    status_lbl.config(text="All 4 points placed. Drag any handle to fine-tune, then Confirm.")
-                else:
-                    status_lbl.config(text=f"Click corner {drag_state['click_step']+1} of 4 ({corner_labels[drag_state['click_step']]}).")
-                redraw_overlay()
-                return
-
-            # Check if clicked near an existing handle
-            handle_idx = None
-            min_dist = 22.0
-            for idx, pt in enumerate(drag_state["corners"]):
-                cx, cy = img_to_canvas(pt)
-                dist = np.hypot(event.x - cx, event.y - cy)
-                if dist < min_dist:
-                    min_dist = dist
-                    handle_idx = idx
-
-            drag_state["selected_handle"] = handle_idx
-
-        def on_drag(event):
-            idx = drag_state["selected_handle"]
-            if idx is not None:
-                ix, iy = canvas_to_img(event.x, event.y)
-                drag_state["corners"][idx] = [ix, iy]
-                redraw_overlay()
-                status_lbl.config(text=f"Dragging {corner_labels[idx]} -> x={ix:.1f}, y={iy:.1f}")
-
-        def on_release(event):
-            drag_state["selected_handle"] = None
-
-        canvas.bind("<Button-1>", on_press)
-        canvas.bind("<B1-Motion>", on_drag)
-        canvas.bind("<ButtonRelease-1>", on_release)
-
-        # Bottom Control Panel
-        bot_bar = tk.Frame(editor, bg=COLOR_CARD, padx=12, pady=10,
-                           highlightbackground=COLOR_BORDER, highlightthickness=1)
-        bot_bar.pack(fill=tk.X, padx=10, pady=(0, 8))
-
-        status_lbl = tk.Label(bot_bar, text="Drag any corner handle to adjust, then click 'Confirm & Apply Corners'.",
-                              font=FONT_SMALL, fg=COLOR_TEXT, bg=COLOR_CARD)
-        status_lbl.pack(side=tk.LEFT, padx=6)
-
-        def do_auto_detect():
-            c = ds.find_document_corners(self.original_image)
-            if c is not None:
-                drag_state["corners"] = c.copy()
-                redraw_overlay()
-                status_lbl.config(text="Auto-detected corners snapped to image!")
-            else:
-                messagebox.showinfo("Auto-Detect", "Could not locate a clear quadrilateral. Please adjust manually.")
-
-        def do_full_frame():
-            drag_state["corners"] = np.array([
-                [0, 0],
-                [w_orig - 1, 0],
-                [w_orig - 1, h_orig - 1],
-                [0, h_orig - 1]
-            ], dtype="float32")
-            redraw_overlay()
-            status_lbl.config(text="Snapped to full image edges.")
-
-        def do_toggle_click_mode():
-            drag_state["click_mode"] = True
-            drag_state["click_step"] = 0
-            btn_click_mode.config(bg="#f59e0b", fg="white", text="Clicking 4 Points...")
-            status_lbl.config(text="Click Point 1: Top-Left corner.")
-
-        def do_confirm():
-            ordered = ds.order_points(drag_state["corners"])
-            self.detected_corners = ordered
-
-            boundary_preview = ds.draw_boundary(self.original_image, ordered)
-            self._show_original(boundary_preview)
-
-            measured_data = self._gather_measured_data(
-                feature_name=ae.FEATURE_BORDER,
-                before_img=self.original_image,
-                after_img=self.original_image,
-                corners=ordered,
-                status_note="Four corners adjusted via Interactive 4-Corner Editor"
-            )
-            exp_text = ae.format_full_explanation(ae.FEATURE_BORDER, measured_data)
-            self._set_explanation_text(exp_text)
-
-            self.history_records.append({
-                "step": len(self.history_records) + 1,
-                "feature": "1. Border Adjustment (Interactive)",
-                "input_size": describe_image(self.original_image),
-                "output_size": describe_image(self.original_image),
-                "time": "Interactive",
-                "notes": "Corners adjusted via Precision Editor"
-            })
-
-            self.set_status("Corners confirmed! Proceed with Step 2: Correct Perspective.")
-            editor.destroy()
-
-        btn_confirm = tk.Button(bot_bar, text="✓ Confirm & Apply Corners", font=FONT_LABEL, bg=COLOR_GREEN, fg="white",
-                                relief=tk.FLAT, padx=14, pady=5, cursor="hand2", command=do_confirm)
-        btn_confirm.pack(side=tk.RIGHT, padx=4)
-
-        btn_auto = tk.Button(bot_bar, text="Auto-Detect", font=FONT_SMALL, bg="#e2e8f0", fg=COLOR_NAVY,
-                             relief=tk.FLAT, padx=10, pady=5, cursor="hand2", command=do_auto_detect)
-        btn_auto.pack(side=tk.RIGHT, padx=4)
-
-        btn_frame_all = tk.Button(bot_bar, text="Full Image", font=FONT_SMALL, bg="#e2e8f0", fg=COLOR_NAVY,
-                                  relief=tk.FLAT, padx=10, pady=5, cursor="hand2", command=do_full_frame)
-        btn_frame_all.pack(side=tk.RIGHT, padx=4)
-
-        btn_click_mode = tk.Button(bot_bar, text="Click 4 Points Fresh", font=FONT_SMALL, bg="#e2e8f0", fg=COLOR_NAVY,
-                                   relief=tk.FLAT, padx=10, pady=5, cursor="hand2", command=do_toggle_click_mode)
-        btn_click_mode.pack(side=tk.RIGHT, padx=4)
-
-        editor.photo_ref = photo_editor  # Keep reference
-
-    def _get_image_click_coords(self, event):
-        """Translate mouse event coordinates on lbl_left_image to original image coordinates."""
-        if self.original_image is None or self.left_photo is None:
-            return None
-
-        lbl_w = self.lbl_left_image.winfo_width()
-        lbl_h = self.lbl_left_image.winfo_height()
-        img_w = self.left_photo.width()
-        img_h = self.left_photo.height()
-
-        offset_x = max(0, (lbl_w - img_w) // 2)
-        offset_y = max(0, (lbl_h - img_h) // 2)
-
-        rel_x = event.x - offset_x
-        rel_y = event.y - offset_y
-
-        if 0 <= rel_x < img_w and 0 <= rel_y < img_h:
-            orig_x = int(rel_x / self.left_display_scale)
-            orig_y = int(rel_y / self.left_display_scale)
-            h, w = self.original_image.shape[:2]
-            return min(max(0, orig_x), w - 1), min(max(0, orig_y), h - 1)
-
-        return None
+            self.btn_manual_corner.config(bg="#e2e8f0", fg=COLOR_NAVY, text="Manual Corners")
+            self.set_status("Manual corner selection cancelled.")
 
     def on_left_image_click(self, event):
-        """Quick clicking on main Left panel when manual selection mode is active."""
         if not self.manual_selection_mode or self.original_image is None:
             return
 
-        coords = self._get_image_click_coords(event)
-        if coords is None:
-            return
+        h, w = self.original_image.shape[:2]
+        orig_x = min(max(event.x / self.left_display_scale, 0), w - 1)
+        orig_y = min(max(event.y / self.left_display_scale, 0), h - 1)
 
-        orig_x, orig_y = coords
         self.manual_points.append((orig_x, orig_y))
         count = len(self.manual_points)
 
+        # Draw current clicked points
         preview = self.original_image.copy()
         for idx, (px, py) in enumerate(self.manual_points):
-            cv2.circle(preview, (int(px), int(py)), 10, (0, 0, 0), -1)
-            cv2.circle(preview, (int(px), int(py)), 8, (0, 255, 255), -1)
-            cv2.putText(preview, f"{idx+1}", (int(px) + 14, int(py) - 6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 255), 2)
+            cv2.circle(preview, (int(px), int(py)), 9, (0, 0, 255), -1)
+            cv2.putText(preview, f"{idx+1}", (int(px)+12, int(py)-6),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
         if count > 1:
             pts_arr = np.array(self.manual_points, dtype=np.int32).reshape((-1, 1, 2))
@@ -908,10 +667,10 @@ class SmartDocApp:
 
         if count < 4:
             labels = ["Top-Left", "Top-Right", "Bottom-Right", "Bottom-Left"]
-            self.set_status(f"Recorded corner {count} of 4 ({labels[count-1]}). Next click: {labels[count]}.")
+            self.set_status(f"Recorded corner {count} of 4 ({labels[count-1]}). Next: click {labels[count]}.")
         else:
             self.manual_selection_mode = False
-            self.btn_manual_corner.config(bg="#e2e8f0", fg=COLOR_NAVY, text="Adjust / Manual Corners")
+            self.btn_manual_corner.config(bg="#e2e8f0", fg=COLOR_NAVY, text="Manual Corners")
             ordered = ds.order_points(self.manual_points)
             self.detected_corners = ordered
 
@@ -923,7 +682,7 @@ class SmartDocApp:
                 before_img=self.original_image,
                 after_img=self.original_image,
                 corners=ordered,
-                status_note="Four corners selected manually on Left panel"
+                status_note="Four corners selected manually by user"
             )
             exp_text = ae.format_full_explanation(ae.FEATURE_BORDER, measured_data)
             self._set_explanation_text(exp_text)
@@ -949,11 +708,12 @@ class SmartDocApp:
 
         corners_to_use = self.detected_corners
         if corners_to_use is None:
+            # Try auto detection if user jumped directly to Step 2
             corners_to_use = ds.find_document_corners(self.original_image)
             if corners_to_use is None:
                 messagebox.showerror(
                     "Corners Required",
-                    "Please detect or position the 4 document corners in Step 1 first."
+                    "Please detect or manually select the 4 document corners in Step 1 first."
                 )
                 return
             self.detected_corners = corners_to_use
@@ -968,10 +728,12 @@ class SmartDocApp:
             return
         elapsed = time.perf_counter() - start_time
 
+        # Save previous state to stack for Undo
         self.processing_stack.append((self.current_processed.copy(), "Perspective Transformation", None))
         self.current_processed = corrected
         self.homography_matrix = matrix_h
 
+        # Update visuals
         self._show_original(boundary_prev)
         self._show_processed(corrected, "Perspective-Corrected Document")
         self.update_histograms(self.original_image, corrected)
@@ -1018,22 +780,25 @@ class SmartDocApp:
                 noise_kernel=3,
                 clip_limit=2.0,
                 tile_grid=8,
-                block_size=None,  # Resolution-adaptive block size
-                c_value=8
+                block_size=15,
+                c_value=10
             )
         except Exception as err:
             messagebox.showerror("Enhancement Error", f"Old document enhancement failed:\n{err}")
             return
         elapsed = time.perf_counter() - start_time
 
+        # Save previous state to stack for Undo
         self.processing_stack.append((self.current_processed.copy(), "Old Document Enhancement", None))
         self.current_processed = enhanced
         self.pipeline_stages = stages
 
+        # Populate stage combobox
         stage_names = ["Final Enhanced Document"] + [s_name for s_name, _ in stages]
         self.stage_box.config(values=stage_names)
         self.stage_var.set("Final Enhanced Document")
 
+        # Update visuals
         self._show_processed(enhanced, "Enhanced Document (Clean Scan)")
         self.update_histograms(self.original_image, enhanced)
 
@@ -1055,6 +820,7 @@ class SmartDocApp:
             "notes": "6-stage DIP pipeline executed"
         })
 
+        # Automatically save enhanced image to default output path
         try:
             cv2.imwrite(DEFAULT_SCANNED_DOC, enhanced)
         except Exception:
@@ -1089,33 +855,22 @@ class SmartDocApp:
             return
 
         image_to_ocr = self.current_processed.copy()
-
-        # Parse selected PSM mode
-        psm_choice = self.ocr_psm_var.get()
-        psm_mode = 6
-        if "PSM 3" in psm_choice:
-            psm_mode = 3
-        elif "PSM 4" in psm_choice:
-            psm_mode = 4
-        elif "PSM 11" in psm_choice:
-            psm_mode = 11
-
-        self.set_status(f"Running Tesseract OCR engine (PSM {psm_mode})... please wait.")
+        self.set_status("Running Tesseract OCR engine (--oem 3 --psm 6)... please wait.")
         self.btn_ocr.config(state=tk.DISABLED, text="Extracting...")
 
         def ocr_worker():
             try:
-                text = ocr.extract_text(image_to_ocr, psm_mode=psm_mode)
-                self.ocr_queue.put(("SUCCESS", text, psm_mode))
+                text = ocr.extract_text(image_to_ocr)
+                self.ocr_queue.put(("SUCCESS", text))
             except Exception as err:
-                self.ocr_queue.put(("ERROR", str(err), psm_mode))
+                self.ocr_queue.put(("ERROR", str(err)))
 
         threading.Thread(target=ocr_worker, daemon=True).start()
         self.root.after(100, self._poll_ocr_thread)
 
     def _poll_ocr_thread(self):
         try:
-            status, payload, psm_mode = self.ocr_queue.get_nowait()
+            status, payload = self.ocr_queue.get_nowait()
         except queue.Empty:
             self.root.after(100, self._poll_ocr_thread)
             return
@@ -1129,8 +884,8 @@ class SmartDocApp:
 
         self.last_extracted_text = payload
         char_count = len(payload)
-        word_count = len(payload.split())
 
+        # Save extracted text to output/output.txt
         try:
             saved_path = ocr.save_text(payload, DEFAULT_TEXT_DOC)
             save_msg = f"Saved to {saved_path}"
@@ -1142,22 +897,22 @@ class SmartDocApp:
             before_img=self.current_processed,
             after_img=self.current_processed,
             ocr_char_count=char_count,
-            status_note=f"Tesseract (PSM {psm_mode}) recognized {char_count} chars, {word_count} words. {save_msg}"
+            status_note=f"Tesseract recognized {char_count} characters. {save_msg}"
         )
         exp_text = ae.format_full_explanation(ae.FEATURE_OCR, measured_data)
         self._set_explanation_text(exp_text)
 
         self.history_records.append({
             "step": len(self.history_records) + 1,
-            "feature": f"4. Text Extraction (PSM {psm_mode})",
+            "feature": "4. Text Extraction (OCR)",
             "input_size": describe_image(self.current_processed),
-            "output_size": f"{char_count} chars / {word_count} words",
+            "output_size": f"{char_count} chars",
             "time": "Async",
             "notes": f"Saved to {DEFAULT_TEXT_DOC}"
         })
 
         self.open_text_dialog()
-        self.set_status(f"OCR Complete! {char_count} characters ({word_count} words) saved to {DEFAULT_TEXT_DOC}.")
+        self.set_status(f"OCR Complete! {char_count} characters extracted and saved to {DEFAULT_TEXT_DOC}.")
 
     def open_text_dialog(self):
         if not self.last_extracted_text:
@@ -1166,19 +921,18 @@ class SmartDocApp:
 
         win = tk.Toplevel(self.root)
         win.title("Extracted Document Text — Tesseract OCR")
-        win.geometry("820x560")
+        win.geometry("780x540")
         win.configure(bg=COLOR_BG)
 
+        # Header
         top_frame = tk.Frame(win, bg=COLOR_CARD, padx=14, pady=10, highlightbackground=COLOR_BORDER, highlightthickness=1)
         top_frame.pack(fill=tk.X, padx=10, pady=8)
         tk.Label(top_frame, text="EXTRACTED TEXT CONTENT", font=FONT_LABEL, fg=COLOR_NAVY, bg=COLOR_CARD).pack(side=tk.LEFT)
-
-        chars = len(self.last_extracted_text)
-        words = len(self.last_extracted_text.split())
-        char_lbl = tk.Label(top_frame, text=f"Characters: {chars}  |  Words: {words}",
+        char_lbl = tk.Label(top_frame, text=f"Total Characters: {len(self.last_extracted_text)}",
                             font=FONT_SMALL, fg=COLOR_MUTED, bg=COLOR_CARD)
         char_lbl.pack(side=tk.RIGHT)
 
+        # Text box
         text_frame = tk.Frame(win, bg=COLOR_CARD)
         text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 8))
         scroller = ttk.Scrollbar(text_frame)
@@ -1190,6 +944,7 @@ class SmartDocApp:
         txt_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scroller.config(command=txt_box.yview)
 
+        # Actions
         btn_frame = tk.Frame(win, bg=COLOR_BG, padx=10, pady=6)
         btn_frame.pack(fill=tk.X)
 
@@ -1259,7 +1014,7 @@ class SmartDocApp:
         self.pipeline_stages = []
         self.last_extracted_text = ""
 
-        self.btn_manual_corner.config(bg="#e2e8f0", fg=COLOR_NAVY, text="Adjust / Manual Corners")
+        self.btn_manual_corner.config(bg="#e2e8f0", fg=COLOR_NAVY, text="Manual Corners")
         self.stage_box.config(values=["Awaiting Enhance Old Document"])
         self.stage_var.set("Awaiting Enhance Old Document")
 
